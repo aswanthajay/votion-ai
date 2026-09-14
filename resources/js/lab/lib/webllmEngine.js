@@ -306,6 +306,9 @@ INSTRUCTIONS FOR WRITING CODE:
 - NEVER import from '@chakra-ui/react', and NEVER use <Box>, <Flex>, <Heading>, or <Skeleton>. Use <div> and standard HTML elements with Tailwind CSS classes instead.
 - NEVER import from 'next/router', 'next/navigation', or 'next/link'. This is a Vite React SPA, not Next.js.
 - NEVER import from '@tanstack/react-query', 'react-use', or '@mui/...'.
+- NEVER import from 'leaflet', 'react-leaflet', 'mapbox-gl', or external map libraries. For maps, render interactive placeholder map chrome (SVG/styled grid, pins, zoom buttons, coordinates, and place cards) using standard React + Tailwind CSS.
+- NEVER import from non-existent relative local files like './mapChrome', './data', './mockData', './places', or './utils'. Define ALL data structures, constants, helper functions, and child components inline directly inside the same file.
+- NEVER add trailing inline comments to import statements (e.g. write "import { foo } from 'bar';" without trailing comments).
 - NEVER import from '@lucide-react/icons'. Always import from 'lucide-react'.
 - NEVER fetch from fake external APIs (e.g. do NOT use fetch('https://api.example.com/...')). Define realistic, rich mock data arrays/objects directly inside the component file so the application renders and functions immediately offline.
 - For multi-step forms, wizards, or tabs: use simple React state (e.g. const [step, setStep] = useState(1); const [formData, setFormData] = useState({...})).
@@ -727,9 +730,11 @@ export async function runWebLlmChat({
             let scrubbedProse = scrubPseudoToolTags(cleanText)
             if (isBuildMode) {
                 // In build mode, strip code blocks that are being written as files so raw code does not leak into chat prose
-                scrubbedProse = scrubbedProse.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '').trim()
+                scrubbedProse = scrubbedProse.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '')
+                // Strip partial unclosed code fences e.g. "```jsx" or "```" at stream tail
+                scrubbedProse = scrubbedProse.replace(/```[a-zA-Z0-9_./ :-]*$/gi, '').trim()
             }
-            if (typeof onEvent === 'function' && scrubbedProse && scrubbedProse !== lastEmittedProse) {
+            if (typeof onEvent === 'function' && scrubbedProse !== lastEmittedProse) {
                 lastEmittedProse = scrubbedProse
                 onEvent({ type: 'text', text: scrubbedProse })
             }
@@ -829,7 +834,8 @@ export async function runWebLlmChat({
 
     cleanVisible = scrubPseudoToolTags(cleanVisible).trim()
     if (isBuildMode) {
-        cleanVisible = cleanVisible.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '').trim()
+        cleanVisible = cleanVisible.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '')
+        cleanVisible = cleanVisible.replace(/```[a-zA-Z0-9_./ :-]*$/gi, '').trim()
     }
     if (isBuildMode && ! cleanVisible && toolCalls.length > 0) {
         cleanVisible = `Implemented changes in ${toolCalls.map((c) => c.arguments?.path || 'workspace').join(', ')}.`

@@ -404,7 +404,9 @@ function runLightStructureCheck(path = '', body = '') {
 
         const lines = text.split('\n')
         for (let i = 0; i < lines.length; i += 1) {
-            const line = lines[i]
+            const rawLine = lines[i]
+            const line = rawLine.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '').trim()
+            if (! line) continue
             if (! /^\s*import\s+/.test(line)) continue
             if (/from\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) continue
             if (/import\s+['"][^'"]+['"]\s*;?\s*$/.test(line)) continue
@@ -415,7 +417,7 @@ function runLightStructureCheck(path = '', body = '') {
                 line: i + 1,
                 column: 1,
                 errorType: 'MalformedImport',
-                message: `Malformed import: ${line.trim().slice(0, 120)}`,
+                message: `Malformed import: ${rawLine.trim().slice(0, 120)}`,
             }
         }
     }

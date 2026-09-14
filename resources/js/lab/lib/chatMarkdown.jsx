@@ -61,7 +61,8 @@ export function ChatMarkdown({ content, isStreaming = false }) {
         [mermaidPlugin],
     )
 
-    if (! source.trim()) {
+    const trimmed = source.trim()
+    if (! trimmed || /^```[a-zA-Z0-9_./ :-]*\s*(?:```)?$/i.test(trimmed)) {
         return null
     }
 

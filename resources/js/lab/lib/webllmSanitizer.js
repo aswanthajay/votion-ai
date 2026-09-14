@@ -37,6 +37,25 @@ export function sanitizeWebLlmGeneratedCode(code = '', path = '') {
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]react-use['"];?/g, '')
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]@mui\/[a-zA-Z0-9_-]+['"];?/g, '')
     out = out.replace(/import\s+(?:\*\s+as\s+\w+|{[^}]*}|\w+)\s+from\s+['"](?:yup|zod|react-hook-form|@hookform\/[a-zA-Z0-9_/-]+|react-hot-toast|react-toastify|sonner|axios|framer-motion)['"];?/g, '')
+    out = out.replace(/import\s+(?:\*\s+as\s+\w+|{[^}]*}|\w+)\s+from\s+['"](?:leaflet|react-leaflet|mapbox-gl|pigeon-maps)['"];?/g, '')
+    out = out.replace(/import\s+['"][^'"]*(?:leaflet|mapbox)[^'"]*['"];?/g, '')
+
+    // Strip hallucinated relative local imports (e.g. import { mapChrome } from './mapChrome')
+    out = out.replace(/^import\s+(?:(\*\s+as\s+\w+)|({[^}]*})|(\w+))\s+from\s+['"]\.\/(?:mapChrome|data|mockData|mock|places|constants|types|utils|api|helpers)['"].*$/gm, (match, star, named, def) => {
+        const decls = []
+        if (star) {
+            const name = star.replace(/\*\s+as\s+/, '').trim()
+            decls.push(`const ${name} = {};`)
+        }
+        if (def) {
+            decls.push(`const ${def} = {};`)
+        }
+        if (named) {
+            const idents = named.replace(/[{}]/g, '').split(',').map((s) => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)
+            idents.forEach((id) => decls.push(`const ${id} = {};`))
+        }
+        return decls.join('\n')
+    })
 
     // Remove lucideReact named import
     out = out.replace(/import\s+{\s*lucideReact\s*}\s+from\s+['"]lucide-react['"];?/g, '')
@@ -282,6 +301,30 @@ const CardFooter = ({ children, className = '', ...props }) => <div className={\
   }
 });
 const AnimatePresence = ({ children }) => <>{children}</>;`)
+    }
+
+    if ((/\bMapContainer\b/.test(out) || /\bMarker\b/.test(out) || /\bTileLayer\b/.test(out) || /\bPopup\b/.test(out) || /\bL\s*\./.test(out)) && ! /const\s+MapContainer\s*=/.test(out)) {
+        stubs.push(`const MapContainer = ({ children, className = '', style, center, zoom }) => (
+  <div className={\`relative overflow-hidden rounded-2xl bg-neutral-950 border border-neutral-800 flex flex-col items-center justify-center min-h-[360px] \${className}\`.trim()} style={style || { width: '100%', height: '400px' }}>
+    <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #38bdf8 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+    <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-neutral-800 text-xs text-neutral-300">
+      <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+      <span className="font-medium">Map Preview</span>
+    </div>
+    <div className="relative z-10 flex flex-wrap items-center justify-center gap-3 p-6">
+      {children}
+    </div>
+  </div>
+);
+const TileLayer = () => null;
+const Marker = ({ position, children, onClick }) => (
+  <button type="button" onClick={onClick} className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-500/90 hover:bg-sky-400 text-white text-xs font-semibold rounded-full shadow-lg shadow-sky-500/30 transition hover:scale-105 active:scale-95">
+    <span>📍</span>
+    <span>{children}</span>
+  </button>
+);
+const Popup = ({ children }) => <div className="text-xs text-neutral-200 mt-1">{children}</div>;
+const L = { Icon: function() { return {}; } };`)
     }
 
     if (stubs.length > 0) {

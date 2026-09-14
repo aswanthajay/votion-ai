@@ -60,7 +60,13 @@ export function ChatMessage({ message, hideAvatar = false, isStreaming = false }
         stripTodos(stripSuggestions(message.content).visible).visible
     )
 
-    if (! visibleContent.trim()) {
+    const isOnlyEmptyFence = (text) => {
+        const trimmed = String(text || '').trim()
+        if (! trimmed) return true
+        return /^```[a-zA-Z0-9_./ :-]*\s*(?:```)?$/i.test(trimmed)
+    }
+
+    if (! visibleContent.trim() || isOnlyEmptyFence(visibleContent)) {
         return null
     }
 

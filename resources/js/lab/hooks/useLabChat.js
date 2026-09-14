@@ -1029,24 +1029,34 @@ export function useLabChat({
                     turnStatus: null,
                 })
             }
-            if (event.type === 'text' && event.text) {
-                if (event.propose_workspace && ! isBuildDisabled && turnMode !== 'chat') {
-                    streamProposedWorkspace = true
+            if (event.type === 'text') {
+                if (event.text) {
+                    if (event.propose_workspace && ! isBuildDisabled && turnMode !== 'chat') {
+                        streamProposedWorkspace = true
+                    }
+                    const visible = (workspaceOpen || turnMode === 'chat')
+                        ? scrubPseudoToolTags(String(event.text))
+                        : presentDiscoveryReply(String(event.text))
+                    const trimmedVisible = String(visible || '').trim()
+                    if (! trimmedVisible || /^```[a-zA-Z0-9_./ :-]*\s*(?:```)?$/i.test(trimmedVisible)) {
+                        if (liveChrome.bot) {
+                            patchTurn({ bot: null })
+                        }
+                        return
+                    }
+                    // Intro copy landed; the model is still generating write_file JSON.
+                    // Don't drop back to a blank foot — "Waiting for model" after
+                    // thought+text is what made the turn look hung.
+                    const stillWriting = workspaceOpen && ! hasPaintedToolChrome(liveChrome)
+                    const nextStatus = stillWriting ? 'Writing files…' : null
+                    setTurnStatusLabel(nextStatus || '')
+                    patchTurn({
+                        bot: visible,
+                        turnStatus: nextStatus,
+                    })
+                } else if (liveChrome.bot) {
+                    patchTurn({ bot: null })
                 }
-                const visible = (workspaceOpen || turnMode === 'chat')
-                    ? scrubPseudoToolTags(String(event.text))
-                    : presentDiscoveryReply(String(event.text))
-                if (! String(visible || '').trim()) return
-                // Intro copy landed; the model is still generating write_file JSON.
-                // Don't drop back to a blank foot — "Waiting for model" after
-                // thought+text is what made the turn look hung.
-                const stillWriting = workspaceOpen && ! hasPaintedToolChrome(liveChrome)
-                const nextStatus = stillWriting ? 'Writing files…' : null
-                setTurnStatusLabel(nextStatus || '')
-                patchTurn({
-                    bot: visible,
-                    turnStatus: nextStatus,
-                })
             }
             if (event.type === 'tool_start' && event.name) {
                 paintPendingToolCalls([{
