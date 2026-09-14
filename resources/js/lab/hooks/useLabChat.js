@@ -850,6 +850,9 @@ export function useLabChat({
                 path,
                 status: 'done',
                 rows,
+                tokens: existing?.tokens || rawArgs?.tokens || null,
+                speed: existing?.speed || rawArgs?.speed || null,
+                bytes: existing?.bytes || rawArgs?.bytes || null,
                 postHeal: healActive,
             }
             const writes = upsertChromeCard(liveChrome.writes, card, { key: 'path' })
@@ -1056,6 +1059,33 @@ export function useLabChat({
                     })
                 } else if (liveChrome.bot) {
                     patchTurn({ bot: null })
+                }
+            }
+            if (event.type === 'tool_progress' && event.name === 'write_file') {
+                const path = normalizeVfsPath(event.path || event.arguments?.path || '')
+                if (path) {
+                    const healActive = Boolean(liveChrome.vfsHeal)
+                    const existing = (liveChrome.writes || []).find((row) => row?.path === path)
+                    const card = {
+                        path,
+                        status: existing?.status === 'done' ? 'done' : 'writing',
+                        rows: Array.isArray(existing?.rows) ? existing.rows : [],
+                        tokens: event.tokens || existing?.tokens || null,
+                        speed: event.speed || existing?.speed || null,
+                        bytes: event.bytes || existing?.bytes || null,
+                        postHeal: healActive,
+                    }
+                    const writes = upsertChromeCard(liveChrome.writes, card, { key: 'path' })
+                    const toolStack = upsertToolStack(liveChrome.toolStack, {
+                        kind: 'writeFile',
+                        matchKey: card.path,
+                        ...card,
+                    })
+                    patchTurn({
+                        writeFile: card,
+                        writes,
+                        toolStack,
+                    })
                 }
             }
             if (event.type === 'tool_start' && event.name) {
@@ -1699,6 +1729,9 @@ export function useLabChat({
                                     path: evt.writeFile.path,
                                     status: 'writing',
                                     rows: [],
+                                    tokens: evt.writeFile.tokens || null,
+                                    speed: evt.writeFile.speed || null,
+                                    bytes: evt.writeFile.bytes || null,
                                     postHeal: healActive,
                                 }
                                 const writes = upsertChromeCard(liveChrome.writes, card, { key: 'path' })

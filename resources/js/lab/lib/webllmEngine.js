@@ -641,6 +641,7 @@ export async function runWebLlmChat({
     const startedFiles = new Set()
     const endedFiles = new Set()
     let tokenCount = 0
+    const streamStartTime = Date.now()
 
     try {
         for await (const chunk of stream) {
@@ -674,6 +675,8 @@ export async function runWebLlmChat({
 
         if (! inThought) {
             const cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/g, '').trimStart()
+            const elapsed = Math.max(0.1, (Date.now() - streamStartTime) / 1000)
+            const speed = Number((tokenCount / elapsed).toFixed(1))
 
             if (isBuildMode) {
                 const toolState = parseStreamingToolState(cleanText, { isBuildMode: true })
@@ -681,6 +684,7 @@ export async function runWebLlmChat({
                 // 1. Emit completed files immediately
                 for (const comp of toolState.completedFiles) {
                     if (! endedFiles.has(comp.path)) {
+                        const compBytes = comp.content?.length || 0
                         if (! startedFiles.has(comp.path)) {
                             startedFiles.add(comp.path)
                             if (typeof onEvent === 'function') {
@@ -689,7 +693,7 @@ export async function runWebLlmChat({
                                     type: 'tool_start',
                                     id: `webllm_${comp.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                                     name: 'write_file',
-                                    arguments: { path: comp.path },
+                                    arguments: { path: comp.path, tokens: tokenCount, bytes: compBytes, speed },
                                 })
                             }
                         }
@@ -699,7 +703,7 @@ export async function runWebLlmChat({
                                 type: 'tool_end',
                                 id: `webllm_${comp.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                                 name: 'write_file',
-                                arguments: { path: comp.path, content: comp.content },
+                                arguments: { path: comp.path, content: comp.content, tokens: tokenCount, bytes: compBytes, speed },
                             })
                             onEvent({ type: 'status', label: `Wrote ${comp.path}` })
                         }
@@ -709,6 +713,7 @@ export async function runWebLlmChat({
                 // 2. Emit active streaming file
                 if (toolState.activeFile) {
                     const curPath = toolState.activeFile.path
+                    const curBytes = toolState.activeFile.partialContent?.length || 0
                     if (! startedFiles.has(curPath)) {
                         startedFiles.add(curPath)
                         if (typeof onEvent === 'function') {
@@ -717,12 +722,41 @@ export async function runWebLlmChat({
                                 type: 'tool_start',
                                 id: `webllm_${curPath.replace(/[^a-zA-Z0-9]/g, '_')}`,
                                 name: 'write_file',
-                                arguments: { path: curPath },
+                                arguments: { path: curPath, tokens: tokenCount, bytes: curBytes, speed },
+                            })
+                            onEvent({
+                                type: 'ui',
+                                writeFile: {
+                                    path: curPath,
+                                    status: 'writing',
+                                    tokens: tokenCount,
+                                    bytes: curBytes,
+                                    speed,
+                                },
                             })
                         }
-                    } else if (tokenCount % 10 === 0 && typeof onEvent === 'function') {
-                        const bytes = toolState.activeFile.partialContent.length
-                        onEvent({ type: 'status', label: `Writing ${curPath} (${bytes} bytes)…` })
+                    } else if (typeof onEvent === 'function' && (tokenCount % 3 === 0 || tokenCount < 10)) {
+                        onEvent({
+                            type: 'tool_progress',
+                            name: 'write_file',
+                            path: curPath,
+                            tokens: tokenCount,
+                            bytes: curBytes,
+                            speed,
+                        })
+                        onEvent({
+                            type: 'ui',
+                            writeFile: {
+                                path: curPath,
+                                status: 'writing',
+                                tokens: tokenCount,
+                                bytes: curBytes,
+                                speed,
+                            },
+                        })
+                        if (tokenCount % 20 === 0) {
+                            onEvent({ type: 'status', label: `Writing ${curPath} (${curBytes} bytes)…` })
+                        }
                     }
                 }
             }
@@ -771,7 +805,7 @@ export async function runWebLlmChat({
                         type: 'tool_start',
                         id: `webllm_${af.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                         name: 'write_file',
-                        arguments: { path: af.path },
+                        arguments: { path: af.path, tokens: tokenCount, bytes: af.partialContent?.length || 0 },
                     })
                 }
             }
@@ -781,7 +815,7 @@ export async function runWebLlmChat({
                     type: 'tool_end',
                     id: `webllm_${af.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                     name: 'write_file',
-                    arguments: { path: af.path, content: cleanContent },
+                    arguments: { path: af.path, content: cleanContent, tokens: tokenCount, bytes: cleanContent.length },
                 })
                 onEvent({ type: 'status', label: `Wrote ${af.path}` })
             }

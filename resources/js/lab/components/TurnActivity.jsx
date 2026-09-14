@@ -180,6 +180,9 @@ export function TurnActivity({
                                     path={row.path}
                                     status={row.status}
                                     rows={row.rows}
+                                    tokens={row.tokens}
+                                    speed={row.speed}
+                                    bytes={row.bytes}
                                 />
                             )
                         case 'shell':
@@ -213,6 +216,9 @@ export function TurnActivity({
                                     status={row.status}
                                     detail={row.detail}
                                     rows={Array.isArray(row.rows) ? row.rows : []}
+                                    tokens={row.tokens}
+                                    speed={row.speed}
+                                    bytes={row.bytes}
                                     staticEnter={! busy}
                                 />
                             )

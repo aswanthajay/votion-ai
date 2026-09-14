@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { ToolStatusText } from './ToolStatusText'
 import { DiffPanel, countDiffRows } from './DiffPanel'
 import { IconChevron, fileName } from './toolIcons'
@@ -29,12 +29,32 @@ export function WriteFileCard({
     status = 'done',
     rows = [],
     detail = '',
+    tokens = null,
+    speed = null,
+    bytes = null,
     defaultOpen = false,
     onOpenChange,
     staticEnter = false,
 }) {
     const panelId = useId()
     const [isOpen, setIsOpen] = useState(defaultOpen)
+    const [simulatedTokens, setSimulatedTokens] = useState(0)
+
+    useEffect(() => {
+        if (status !== 'writing') {
+            setSimulatedTokens(0)
+            return
+        }
+        if (tokens != null && tokens > 0) return
+
+        // Smooth ticker during writing if live count is awaiting first SSE frame
+        const timer = setInterval(() => {
+            setSimulatedTokens((prev) => prev + Math.floor(Math.random() * 6) + 4)
+        }, 280)
+        return () => clearInterval(timer)
+    }, [status, tokens])
+
+    const activeTokens = (tokens != null && tokens > 0) ? tokens : simulatedTokens
     const hasBody = rows.length > 0
     const name = String(path || '').trim() ? fileName(path) : 'file'
     const verb = status === 'writing'
@@ -72,6 +92,18 @@ export function WriteFileCard({
                 <span className="inline-flex min-h-3.5 min-w-0 flex-1 items-center overflow-hidden text-ellipsis whitespace-nowrap leading-tight" title={path || name}>
                     <ToolStatusText text={`${verb} ${name}`} pending={status === 'writing'} />
                 </span>
+                {status === 'writing' && (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-500 dark:text-sky-300">
+                        <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+                        </span>
+                        <span>Generating</span>
+                        {activeTokens > 0 ? (
+                            <span className="font-mono text-[10.5px] opacity-90">• {activeTokens} tok</span>
+                        ) : null}
+                    </span>
+                )}
                 {status === 'error' && detail ? (
                     <span
                         className="max-w-[14rem] shrink-0 truncate rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:border-red-400/30 dark:bg-red-950/40 dark:text-red-300"
@@ -82,12 +114,51 @@ export function WriteFileCard({
                 ) : null}
                 {(added > 0 || removed > 0) && (
                     <span className="inline-flex shrink-0 items-center gap-1 leading-tight" aria-label={`${added} added, ${removed} removed`}>
+                        {tokens != null && tokens > 0 && (
+                            <span className="mr-1 text-[11px] font-mono text-krikkit-subtle opacity-80" title={`${tokens} tokens consumed`}>
+                                {tokens} tok
+                            </span>
+                        )}
                         {added > 0 && <span className="text-emerald-500">+{added}</span>}
                         {removed > 0 && <span className="text-red-500">-{removed}</span>}
                     </span>
                 )}
                 {hasBody && <IconChevron open={isOpen} />}
             </button>
+
+            {/* Small, clean and neat status box while writing */}
+            {status === 'writing' && (
+                <div
+                    className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-krikkit-line/80 bg-krikkit-soft/50 px-2.5 py-1.5 text-[11.5px] text-krikkit-muted shadow-xs transition-all animate-in fade-in duration-200"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-80"></span>
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500"></span>
+                        </span>
+                        <span className="font-medium text-krikkit-fg-soft truncate">
+                            Generating content…
+                        </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 text-[11px] font-mono text-krikkit-subtle">
+                        <span className="inline-flex items-center gap-1 rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 font-medium text-sky-600 dark:text-sky-300">
+                            {activeTokens > 0 ? `${activeTokens} tokens consumed` : 'Streaming tokens…'}
+                        </span>
+                        {speed != null && speed > 0 && (
+                            <span className="hidden sm:inline-block text-krikkit-muted">
+                                • {speed} tok/s
+                            </span>
+                        )}
+                        {bytes != null && bytes > 0 && (
+                            <span className="hidden sm:inline-block text-krikkit-muted">
+                                • {(bytes / 1024).toFixed(1)} KB
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Mount only when open — closed 0fr/hidden panels still leak gap under the row. */}
             {hasBody && isOpen ? (

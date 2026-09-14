@@ -739,7 +739,14 @@ export function pendingToolCard(tool, args = {}, meta = {}) {
 
     if (name === 'write_file') {
         const matchKey = path || pendingWriteMatchKey(callId)
-        const card = { path, status: 'writing', rows: [] }
+        const card = {
+            path,
+            status: 'writing',
+            rows: [],
+            tokens: input.tokens || meta.tokens || null,
+            speed: input.speed || meta.speed || null,
+            bytes: input.bytes || meta.bytes || null,
+        }
         return {
             listKey: 'writes',
             singular: 'writeFile',
@@ -759,7 +766,14 @@ export function pendingToolCard(tool, args = {}, meta = {}) {
     }
     if (name === 'apply_patch') {
         if (! path) return null
-        const card = { path, status: 'editing', rows: [] }
+        const card = {
+            path,
+            status: 'editing',
+            rows: [],
+            tokens: input.tokens || meta.tokens || null,
+            speed: input.speed || meta.speed || null,
+            bytes: input.bytes || meta.bytes || null,
+        }
         return {
             listKey: 'edits',
             singular: 'editFile',
