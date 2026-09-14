@@ -823,10 +823,13 @@ export function useLabChat({
             const path = normalizeVfsPath(String(rawArgs?.path || ''))
             let after = typeof rawArgs?.content === 'string' ? rawArgs.content : ''
             if (! path || after === '') return false
-            if (writeReject(path, after)) return false
             const healed = healSourceSyntax(path, after)
             if (healed.healed) after = healed.body
             else if (probeSourceSyntax(path, after).length) return false
+            const rejectIssue = writeReject(path, after)
+            if (rejectIssue) {
+                console.warn('[lab] Stream write composition warning:', path, rejectIssue)
+            }
 
             const existing = (liveChrome.writes || []).find((row) => row?.path === path)
             if (writeCardHasDiff(existing)) return true
@@ -1060,8 +1063,14 @@ export function useLabChat({
                     : {}
                 if (event.name === 'write_file') {
                     if (! settleWriteFromStream(args)) {
-                        // No body yet — keep the Writing chip. complete:true would
-                        // flip to "Wrote" with empty rows until the executor runs.
+                        if (typeof args.content === 'string' && args.content.length > 0) {
+                            // File content was provided but diff was empty/unchanged — finalize chip so it flips from Writing to Wrote
+                            paintPendingToolCalls([{
+                                id: event.id,
+                                name: event.name,
+                                arguments: args,
+                            }], { complete: true })
+                        }
                         return
                     }
                 } else {

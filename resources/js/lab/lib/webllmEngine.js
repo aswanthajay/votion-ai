@@ -253,10 +253,15 @@ export function buildWebLlmSystemPrompt({
         filesContext = `\nExisting workspace files:\n${existingFiles.map((f) => `- ${f}`).join('\n')}\n`
     }
     if (contextPack?.canonical_contents && Object.keys(contextPack.canonical_contents).length > 0) {
-        filesContext += `\nExisting file contents:\n` + Object.entries(contextPack.canonical_contents)
-            .slice(0, 10)
-            .map(([path, content]) => `--- ${path} ---\n${String(content).slice(0, 2000)}`)
-            .join('\n\n') + '\n'
+        // Keep filesContext compact for local WebGPU models to avoid VRAM exhaustion
+        const relevantEntries = Object.entries(contextPack.canonical_contents)
+            .filter(([p]) => p.includes('src/App') || p.includes('src/main') || p.includes('src/index.css'))
+            .slice(0, 2)
+        if (relevantEntries.length > 0) {
+            filesContext += `\nExisting file contents:\n` + relevantEntries
+                .map(([path, content]) => `--- ${path} ---\n${String(content).slice(0, 1200)}`)
+                .join('\n\n') + '\n'
+        }
     }
 
     const isCoder = isWebLlmCoder(modelId) || isWebLlmCoder(modelName)
@@ -297,12 +302,13 @@ INSTRUCTIONS FOR WRITING CODE:
 - STYLING: ONLY standard Tailwind CSS utility classes (flex, grid, gap, rounded, bg-, text-, border-, shadow-, transition, etc.).
 - ICONS: Only import named icons from 'lucide-react' (e.g. import { Search, Heart, Clock, Utensils, Star, X } from 'lucide-react';).
 3. STRICT PROHIBITIONS:
+- NEVER import from or use 'yup', 'zod', 'react-hook-form', or '@hookform/...'. ALWAYS manage form fields, steps, and validation with standard React useState hooks.
 - NEVER import from '@chakra-ui/react', and NEVER use <Box>, <Flex>, <Heading>, or <Skeleton>. Use <div> and standard HTML elements with Tailwind CSS classes instead.
 - NEVER import from 'next/router', 'next/navigation', or 'next/link'. This is a Vite React SPA, not Next.js.
 - NEVER import from '@tanstack/react-query', 'react-use', or '@mui/...'.
 - NEVER import from '@lucide-react/icons'. Always import from 'lucide-react'.
 - NEVER fetch from fake external APIs (e.g. do NOT use fetch('https://api.example.com/...')). Define realistic, rich mock data arrays/objects directly inside the component file so the application renders and functions immediately offline.
-- For navigation or tabs, use simple local React state (e.g. const [activeTab, setActiveTab] = useState('all')).
+- For multi-step forms, wizards, or tabs: use simple React state (e.g. const [step, setStep] = useState(1); const [formData, setFormData] = useState({...})).
 4. Completeness: Output complete file bodies every time. Do NOT use placeholders like "// rest of code here" or "TODO".${filesContext}`
     }
 
@@ -383,8 +389,16 @@ export function normalizeWebLlmMessages(rawMessages = [], defaultSystemPrompt = 
         })
     }
 
-    for (const msg of conversational) {
-        result.push({ ...msg })
+    // Keep conversational history compact for WebLLM: only keep the last 4 messages,
+    // and prune large code blocks from older assistant turns to conserve WebGPU KV cache.
+    const recentConversational = conversational.slice(-4)
+    for (let i = 0; i < recentConversational.length; i++) {
+        const msg = { ...recentConversational[i] }
+        const isLastTurn = i >= recentConversational.length - 2
+        if (! isLastTurn && msg.role === 'assistant' && typeof msg.content === 'string') {
+            msg.content = msg.content.replace(/```[\s\S]*?```/g, '[Prior file code omitted for brevity]').slice(0, 500)
+        }
+        result.push(msg)
     }
 
     const effectiveBuildMode = Boolean(isBuildMode || stage === 'build' || stage === 'executor' || mode === 'build')
@@ -625,7 +639,8 @@ export async function runWebLlmChat({
     const endedFiles = new Set()
     let tokenCount = 0
 
-    for await (const chunk of stream) {
+    try {
+        for await (const chunk of stream) {
         if (signal?.aborted) {
             await engine.interruptGenerate().catch(() => {})
             const error = new Error('Turn aborted')
@@ -709,11 +724,21 @@ export async function runWebLlmChat({
                 }
             }
 
-            const scrubbedProse = scrubPseudoToolTags(cleanText)
+            let scrubbedProse = scrubPseudoToolTags(cleanText)
+            if (isBuildMode) {
+                // In build mode, strip code blocks that are being written as files so raw code does not leak into chat prose
+                scrubbedProse = scrubbedProse.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '').trim()
+            }
             if (typeof onEvent === 'function' && scrubbedProse && scrubbedProse !== lastEmittedProse) {
                 lastEmittedProse = scrubbedProse
                 onEvent({ type: 'text', text: scrubbedProse })
             }
+        }
+    }
+    } catch (streamErr) {
+        console.warn('[WebLLM] Stream ended or encountered exception:', streamErr)
+        if (typeof onEvent === 'function') {
+            onEvent({ type: 'status', label: 'Finalizing build files…' })
         }
     }
 
@@ -803,6 +828,9 @@ export async function runWebLlmChat({
     }
 
     cleanVisible = scrubPseudoToolTags(cleanVisible).trim()
+    if (isBuildMode) {
+        cleanVisible = cleanVisible.replace(/```(?:jsx?|tsx?|javascript|react)?(?:\s+[^\n]+)?\n[\s\S]*?(?:```|$)/gi, '').trim()
+    }
     if (isBuildMode && ! cleanVisible && toolCalls.length > 0) {
         cleanVisible = `Implemented changes in ${toolCalls.map((c) => c.arguments?.path || 'workspace').join(', ')}.`
         if (typeof onEvent === 'function') {

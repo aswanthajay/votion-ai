@@ -1,3 +1,5 @@
+import { healSourceSyntax, probeSourceSyntax } from '../orchestration/syntaxProbe.js'
+
 /**
  * Sanitizes and heals common hallucinations produced by small local models (e.g. Qwen 2.5 Coder 1.5B).
  * Converts Next.js router, Chakra UI components, missing hooks, and non-existent packages into valid standard React + Tailwind CSS.
@@ -34,6 +36,7 @@ export function sanitizeWebLlmGeneratedCode(code = '', path = '') {
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]@tanstack\/react-query['"];?/g, '')
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]react-use['"];?/g, '')
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]@mui\/[a-zA-Z0-9_-]+['"];?/g, '')
+    out = out.replace(/import\s+(?:\*\s+as\s+\w+|{[^}]*}|\w+)\s+from\s+['"](?:yup|zod|react-hook-form|@hookform\/[a-zA-Z0-9_/-]+|react-hot-toast|react-toastify|sonner|axios|framer-motion)['"];?/g, '')
 
     // Remove lucideReact named import
     out = out.replace(/import\s+{\s*lucideReact\s*}\s+from\s+['"]lucide-react['"];?/g, '')
@@ -59,12 +62,81 @@ export function sanitizeWebLlmGeneratedCode(code = '', path = '') {
 const lucideReact = LucideReact;`)
     }
 
-    if (/\buseRouter\s*\(/.test(out) && ! /const\s+useRouter\s*=/.test(out)) {
+    if (/\buseRouter\s*\(/.test(out) && ! /const\s+useRouter\s*=/.test(out) && ! /function\s+useRouter\b/.test(out)) {
         stubs.push(`const useRouter = () => ({ push: () => {}, replace: () => {}, back: () => {}, pathname: '/', query: {} });`)
     }
 
-    if (/\buseLocalStorage\s*\(/.test(out) && ! /const\s+useLocalStorage\s*=/.test(out)) {
-        stubs.push(`const useLocalStorage = (key, initialValue) => {
+    if (/\byup\b/.test(out) && ! /const\s+yup\s*=/.test(out)) {
+        stubs.push(`const yup = {
+  object: (shape = {}) => ({
+    shape,
+    validate: async (data) => data,
+    validateSync: (data) => data,
+    cast: (data) => data,
+    required: () => yup.object(shape),
+  }),
+  string: () => {
+    const c = { required: () => c, email: () => c, min: () => c, max: () => c, matches: () => c };
+    return c;
+  },
+  number: () => {
+    const c = { required: () => c, positive: () => c, integer: () => c, min: () => c, max: () => c };
+    return c;
+  },
+  boolean: () => ({ required: () => ({}) }),
+  array: () => ({ required: () => ({}), min: () => ({}) }),
+};`)
+    }
+
+    if (/\bz\s*\.\s*(?:object|string|number)\b/.test(out) && ! /const\s+z\s*=/.test(out)) {
+        stubs.push(`const z = {
+  object: (shape = {}) => ({
+    shape,
+    parse: (data) => data,
+    safeParse: (data) => ({ success: true, data }),
+  }),
+  string: () => {
+    const c = { min: () => c, max: () => c, email: () => c, optional: () => c, regex: () => c };
+    return c;
+  },
+  number: () => {
+    const c = { min: () => c, max: () => c, positive: () => c, optional: () => c };
+    return c;
+  },
+  boolean: () => ({ optional: () => ({}) }),
+  array: () => ({ min: () => ({}) }),
+};`)
+    }
+
+    if ((/\buseForm\s*\(/.test(out) || /\byupResolver\b/.test(out) || /\bzodResolver\b/.test(out)) && ! /function\s+useForm\b/.test(out) && ! /const\s+useForm\s*=/.test(out)) {
+        stubs.push(`function useForm(opts = {}) {
+  const [values, setValues] = React.useState({});
+  const [errors, setErrors] = React.useState({});
+  const register = (name) => ({
+    name,
+    onChange: (e) => {
+      const val = e && e.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e;
+      setValues((prev) => ({ ...prev, [name]: val }));
+    },
+    value: values[name] ?? '',
+  });
+  const handleSubmit = (onValid) => (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (typeof onValid === 'function') onValid(values);
+  };
+  const watch = (name) => (name ? values[name] : values);
+  const setValue = (name, val) => setValues((prev) => ({ ...prev, [name]: val }));
+  const getValues = (name) => (name ? values[name] : values);
+  const reset = (newVals = {}) => setValues(newVals);
+  return { register, handleSubmit, watch, setValue, getValues, reset, formState: { errors, isValid: true } };
+}
+const yupResolver = () => () => ({ values: {}, errors: {} });
+const zodResolver = () => () => ({ values: {}, errors: {} });
+const Controller = ({ render }) => typeof render === 'function' ? render({ field: { onChange: () => {}, value: '' } }) : null;`)
+    }
+
+    if (/\buseLocalStorage\s*\(/.test(out) && ! /function\s+useLocalStorage\b/.test(out) && ! /const\s+useLocalStorage\s*=/.test(out)) {
+        stubs.push(`function useLocalStorage(key, initialValue) {
   const [val, setVal] = React.useState(() => {
     try {
       const item = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
@@ -83,10 +155,10 @@ const lucideReact = LucideReact;`)
     } catch {}
   };
   return [val, setValue];
-};`)
+}`)
     }
 
-    if (/\buseQuery\s*\(/.test(out) && ! /const\s+useQuery\s*=/.test(out)) {
+    if (/\buseQuery\s*\(/.test(out) && ! /function\s+useQuery\b/.test(out) && ! /const\s+useQuery\s*=/.test(out)) {
         stubs.push(`const SAMPLE_FALLBACK_DATA = [
   { id: 1, title: 'Creamy Tuscan Garlic Chicken', servings: 4, cookTime: 30, category: 'dinner', ingredients: ['Chicken Breast', 'Garlic', 'Heavy Cream', 'Sun-dried Tomatoes', 'Spinach', 'Parmesan'], steps: ['Sear seasoned chicken breasts until golden.', 'Sauté minced garlic and sun-dried tomatoes.', 'Add cream and simmer, stir in spinach.', 'Return chicken and coat in creamy sauce.'] },
   { id: 2, title: 'Avocado & Poached Egg Toast', servings: 2, cookTime: 15, category: 'breakfast', ingredients: ['Sourdough Bread', 'Ripe Avocados', 'Fresh Eggs', 'Red Chili Flakes', 'Lemon Juice'], steps: ['Toast sourdough until crispy.', 'Mash avocado with lemon juice, salt and pepper.', 'Poach eggs in simmering water for 3 mins.', 'Assemble toast with eggs and chili flakes.'] },
@@ -94,7 +166,7 @@ const lucideReact = LucideReact;`)
   { id: 4, title: 'Classic Belgian Berry Waffles', servings: 3, cookTime: 25, category: 'breakfast', ingredients: ['Flour', 'Milk', 'Eggs', 'Baking Powder', 'Butter', 'Fresh Berries', 'Maple Syrup'], steps: ['Whisk dry ingredients with beaten eggs and milk.', 'Pour batter into heated waffle iron until golden.', 'Serve warm topped with berries and syrup.'] }
 ];
 
-const useQuery = ({ queryFn }) => {
+function useQuery({ queryFn }) {
   const [data, setData] = React.useState(SAMPLE_FALLBACK_DATA);
   const [isLoading, setIsLoading] = React.useState(false);
   React.useEffect(() => {
@@ -113,7 +185,7 @@ const useQuery = ({ queryFn }) => {
     return () => { active = false; };
   }, []);
   return { data, isLoading };
-};`)
+}`)
     }
 
     // Chakra UI components compatibility helpers
@@ -192,13 +264,64 @@ const CardFooter = ({ children, className = '', ...props }) => <div className={\
 );`)
     }
 
+    if (/\btoast\b/.test(out) && ! /const\s+toast\s*=/.test(out)) {
+        stubs.push(`const toast = { success: (m) => console.log(m), error: (m) => console.error(m), loading: () => {}, dismiss: () => {}, custom: () => {} };`)
+    }
+
+    if (/\baxios\b/.test(out) && ! /const\s+axios\s*=/.test(out)) {
+        stubs.push(`const axios = { get: async () => ({ data: {} }), post: async (url, data) => ({ data }) };`)
+    }
+
+    if (/\bmotion\b/.test(out) && ! /const\s+motion\s*=/.test(out)) {
+        stubs.push(`const motion = new Proxy({}, {
+  get: (target, tag) => {
+    return React.forwardRef(({ children, whileHover, whileTap, initial, animate, exit, transition, ...props }, ref) => {
+      const Component = typeof tag === 'string' && tag.length ? tag : 'div';
+      return React.createElement(Component, { ref, ...props }, children);
+    });
+  }
+});
+const AnimatePresence = ({ children }) => <>{children}</>;`)
+    }
+
     if (stubs.length > 0) {
-        const funcMatch = out.match(/(?:export\s+default\s+function|function\s+App|const\s+App\s*=)/)
-        if (funcMatch && funcMatch.index !== undefined) {
-            const idx = funcMatch.index
-            out = out.slice(0, idx) + stubs.join('\n\n') + '\n\n' + out.slice(idx)
+        // Insert stubs right after import statements so top-level constants have dependencies available before initialization
+        const lines = out.split('\n')
+        let lastImportLineIdx = -1
+        let inImport = false
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim()
+            if (/^import\b/.test(line)) {
+                lastImportLineIdx = i
+                if (!line.includes('from') && !line.endsWith(';') && !line.endsWith("'") && !line.endsWith('"')) {
+                    inImport = true
+                }
+            } else if (inImport) {
+                lastImportLineIdx = i
+                if (line.includes('from') || line.endsWith(';') || line.endsWith("'") || line.endsWith('"')) {
+                    inImport = false
+                }
+            }
+        }
+
+        if (lastImportLineIdx >= 0) {
+            lines.splice(lastImportLineIdx + 1, 0, '\n' + stubs.join('\n\n'))
+            out = lines.join('\n')
         } else {
-            out = stubs.join('\n\n') + '\n\n' + out
+            const funcMatch = out.match(/(?:export\s+default\s+function|function\s+App|const\s+App\s*=)/)
+            if (funcMatch && funcMatch.index !== undefined) {
+                const idx = funcMatch.index
+                out = out.slice(0, idx) + stubs.join('\n\n') + '\n\n' + out.slice(idx)
+            } else {
+                out = stubs.join('\n\n') + '\n\n' + out
+            }
+        }
+    }
+
+    if (/\.(jsx?|tsx?)$/i.test(path) && probeSourceSyntax(path, out).length > 0) {
+        const healed = healSourceSyntax(path, out)
+        if (healed.healed) {
+            out = healed.body
         }
     }
 
