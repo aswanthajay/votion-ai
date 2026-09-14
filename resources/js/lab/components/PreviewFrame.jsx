@@ -119,6 +119,7 @@ export function PreviewFrame({
     const routeTableRef = useRef({ routes: new Set(['/']), catchAll: false })
     const refusedRetryRef = useRef(0)
     const guestPaintedRef = useRef(false)
+    const pendingGuestErrorRef = useRef(null)
 
     const routeTable = useMemo(() => discoverGuestRoutes(vfsContents), [vfsContents])
     routeTableRef.current = routeTable
@@ -340,14 +341,17 @@ export function PreviewFrame({
             if (data.type === 'cover-painted') {
                 guestPaintedRef.current = true
                 setGuestPainted(true)
+                pendingGuestErrorRef.current = null
                 clearConsoleErrors()
                 markFrameReady()
                 return
             }
 
             if (data.type === 'guest-console-error') {
-                if (isAiStreaming || aiBusy) return
-                if (data.category !== 'BUILD_ERROR' && ! guestPaintedRef.current) return
+                if (isAiStreaming || aiBusy) {
+                    pendingGuestErrorRef.current = data
+                    return
+                }
                 if (isIgnorableGuestRuntimeError(data.message, data.stack)) return
                 dispatchPreviewGuestError({
                     message: data.message,
@@ -439,7 +443,24 @@ export function PreviewFrame({
 
         window.addEventListener('message', onMessage)
         return () => window.removeEventListener('message', onMessage)
-    }, [onInspectSelect, onInspectStop, rememberPath, remountAt, syncHistoryFlags, markFrameReady])
+    }, [onInspectSelect, onInspectStop, rememberPath, remountAt, syncHistoryFlags, markFrameReady, isAiStreaming, aiBusy])
+
+    useEffect(() => {
+        if (! isAiStreaming && ! aiBusy && pendingGuestErrorRef.current && ! guestPaintedRef.current) {
+            const data = pendingGuestErrorRef.current
+            pendingGuestErrorRef.current = null
+            if (! isIgnorableGuestRuntimeError(data.message, data.stack)) {
+                dispatchPreviewGuestError({
+                    message: data.message,
+                    stack: data.stack,
+                    file: data.file,
+                    line: data.line,
+                    component: data.component,
+                    category: data.category,
+                })
+            }
+        }
+    }, [isAiStreaming, aiBusy])
 
     const revealPath = useCallback((path, { remount = true } = {}) => {
         const next = path || '/'

@@ -5,6 +5,8 @@
 
 import { scrubPseudoToolTags } from './labChatText.js'
 import { recoverPseudoToolCalls } from '../orchestration/pseudoToolCalls.js'
+import { normalizeVfsPath } from './vfs.js'
+import { sanitizeWebLlmGeneratedCode } from './webllmSanitizer.js'
 
 let cachedEngine = null
 let cachedEngineModelId = null
@@ -288,12 +290,20 @@ Or using XML write_file tags:
 </write_file>
 
 INSTRUCTIONS FOR WRITING CODE:
-1. Primary Entry File: The primary component file is \`src/App.jsx\`. Ensure \`src/App.jsx\` renders a rich, interactive, beautifully styled UI matching the user's prompt.
-2. Libraries & Styling:
-- React (useState, useEffect, useMemo, useCallback)
-- Tailwind CSS utility classes (flex, grid, gap, rounded, shadow, transition, colors)
-- Lucide React icons (\`lucide-react\`) are available.
-3. Completeness: Output complete file bodies every time. Do NOT use placeholders like "// rest of code here" or "TODO".${filesContext}`
+1. Primary Entry File: The primary component file is ALWAYS \`src/App.jsx\`. Always write the path as \`src/App.jsx\` (never bare \`App.jsx\`).
+2. ALLOWED LIBRARIES & COMPONENTS:
+- React standard hooks: useState, useEffect, useMemo, useCallback, useRef.
+- Standard HTML JSX tags ONLY: <div>, <button>, <input>, <span>, <p>, <h1>, <h2>, <h3>, <ul>, <li>, <nav>, <header>, <section>, <footer>, <form>, <label>, <select>, <textarea>, etc.
+- STYLING: ONLY standard Tailwind CSS utility classes (flex, grid, gap, rounded, bg-, text-, border-, shadow-, transition, etc.).
+- ICONS: Only import named icons from 'lucide-react' (e.g. import { Search, Heart, Clock, Utensils, Star, X } from 'lucide-react';).
+3. STRICT PROHIBITIONS:
+- NEVER import from '@chakra-ui/react', and NEVER use <Box>, <Flex>, <Heading>, or <Skeleton>. Use <div> and standard HTML elements with Tailwind CSS classes instead.
+- NEVER import from 'next/router', 'next/navigation', or 'next/link'. This is a Vite React SPA, not Next.js.
+- NEVER import from '@tanstack/react-query', 'react-use', or '@mui/...'.
+- NEVER import from '@lucide-react/icons'. Always import from 'lucide-react'.
+- NEVER fetch from fake external APIs (e.g. do NOT use fetch('https://api.example.com/...')). Define realistic, rich mock data arrays/objects directly inside the component file so the application renders and functions immediately offline.
+- For navigation or tabs, use simple local React state (e.g. const [activeTab, setActiveTab] = useState('all')).
+4. Completeness: Output complete file bodies every time. Do NOT use placeholders like "// rest of code here" or "TODO".${filesContext}`
     }
 
     return `You are a helpful, fast, local AI assistant (${modelName}) running directly in the user's browser via WebGPU.
@@ -453,7 +463,8 @@ export function parseStreamingToolState(text = '', { isBuildMode = false } = {})
             if (pathChild) path = pathChild[1].trim()
             if (contentChild) body = contentChild[1]
             if (path && body.trim()) {
-                completedFiles.push({ path, content: body })
+                const normPath = normalizeVfsPath(path)
+                completedFiles.push({ path: normPath, content: sanitizeWebLlmGeneratedCode(body, normPath) })
             }
         }
     }
@@ -465,7 +476,8 @@ export function parseStreamingToolState(text = '', { isBuildMode = false } = {})
         const pathChild = body.match(/<path>([^<]+)<\/path>/i)
         if (pathChild) path = pathChild[1].trim()
         if (path) {
-            activeFile = { path, partialContent: body }
+            const normPath = normalizeVfsPath(path)
+            activeFile = { path: normPath, partialContent: body }
         }
     }
 
@@ -482,7 +494,8 @@ export function parseStreamingToolState(text = '', { isBuildMode = false } = {})
             const body = inside.slice(firstNewline + 1).replace(/\n$/, '')
             let path = getPathFromFenceMeta(meta, body, isBuildMode)
             if (path && body.trim()) {
-                completedFiles.push({ path, content: body })
+                const normPath = normalizeVfsPath(path)
+                completedFiles.push({ path: normPath, content: sanitizeWebLlmGeneratedCode(body, normPath) })
             }
         }
     }
@@ -495,7 +508,8 @@ export function parseStreamingToolState(text = '', { isBuildMode = false } = {})
             const body = inside.slice(firstNewline + 1)
             let path = getPathFromFenceMeta(meta, body, isBuildMode)
             if (path) {
-                activeFile = { path, partialContent: body }
+                const normPath = normalizeVfsPath(path)
+                activeFile = { path: normPath, partialContent: body }
             }
         }
     }
@@ -516,7 +530,7 @@ function getPathFromFenceMeta(meta = '', body = '', isBuildMode = false) {
             path = 'src/index.css'
         }
     }
-    return path || null
+    return path ? normalizeVfsPath(path) : null
 }
 
 /**
@@ -732,11 +746,12 @@ export async function runWebLlmChat({
                 }
             }
             if (typeof onEvent === 'function') {
+                const cleanContent = sanitizeWebLlmGeneratedCode(af.partialContent, af.path)
                 onEvent({
                     type: 'tool_end',
                     id: `webllm_${af.path.replace(/[^a-zA-Z0-9]/g, '_')}`,
                     name: 'write_file',
-                    arguments: { path: af.path, content: af.partialContent },
+                    arguments: { path: af.path, content: cleanContent },
                 })
                 onEvent({ type: 'status', label: `Wrote ${af.path}` })
             }
@@ -751,7 +766,11 @@ export async function runWebLlmChat({
                 toolCalls = recovered.toolCalls
                 for (const call of toolCalls) {
                     if (call.name === 'write_file' && call.arguments?.path) {
-                        const p = call.arguments.path
+                        const p = normalizeVfsPath(call.arguments.path)
+                        call.arguments.path = p
+                        if (typeof call.arguments.content === 'string') {
+                            call.arguments.content = sanitizeWebLlmGeneratedCode(call.arguments.content, p)
+                        }
                         if (! endedFiles.has(p)) {
                             if (! startedFiles.has(p)) {
                                 startedFiles.add(p)

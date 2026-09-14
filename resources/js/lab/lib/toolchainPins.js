@@ -62,6 +62,9 @@ const PLACEHOLDER_SCOPES = new Set([
     '@my-org',
     '@myorg',
     '@username',
+    '@chakra-ui',
+    '@tanstack',
+    '@lucide-react',
 ])
 
 const PLACEHOLDER_UNSCOPED = new Set([
@@ -70,6 +73,8 @@ const PLACEHOLDER_UNSCOPED = new Set([
     'example-api',
     'your-package',
     'placeholder-pkg',
+    'next',
+    'react-use',
 ])
 
 /**

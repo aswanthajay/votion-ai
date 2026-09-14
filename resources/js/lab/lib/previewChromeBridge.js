@@ -1662,7 +1662,8 @@ export const PREVIEW_CHROME_SCRIPT = `(function(){
     var message = String(payload && payload.message || '').trim();
     var stack = String(payload && payload.stack || message || '').trim();
     if (!message || guestNoise(message) || guestNoise(stack)) return;
-    if (Date.now() < guestBootUntil && (payload.category || 'RUNTIME_ERROR') !== 'BUILD_ERROR') return;
+    var isFatal = /\b(typeerror|referenceerror|syntaxerror|cannot read|failed to resolve|uncaught)\b/i.test(message + '\n' + stack);
+    if (!isFatal && Date.now() < guestBootUntil && (payload.category || 'RUNTIME_ERROR') !== 'BUILD_ERROR') return;
     var key = message.slice(0, 140);
     var now = Date.now();
     if (guestErrorSent[key] && now - guestErrorSent[key] < GUEST_ERROR_DEDUPE_MS) return;
@@ -1684,18 +1685,16 @@ export const PREVIEW_CHROME_SCRIPT = `(function(){
 
   /* Vite's build-error overlay renders inside a shadow root — surface it to
      the host so the Fix card appears without any manual reload. */
-  var lastOverlayMsg = '';
   function checkViteOverlay() {
     try {
       var overlay = document.querySelector('vite-error-overlay');
-      if (!overlay) { lastOverlayMsg = ''; return; }
+      if (!overlay) return;
       var root = overlay.shadowRoot;
       if (!root) return;
       var msgEl = root.querySelector('.message') || root.querySelector('.message-body');
       var fileEl = root.querySelector('.file');
       var msg = msgEl && msgEl.textContent ? msgEl.textContent.trim() : '';
-      if (!msg || msg === lastOverlayMsg) return;
-      lastOverlayMsg = msg;
+      if (!msg) return;
       reportGuestError({
         category: 'BUILD_ERROR',
         message: msg,
