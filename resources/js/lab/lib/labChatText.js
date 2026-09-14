@@ -4,22 +4,52 @@ import {
     streamRevealSafe,
 } from '../orchestration/index.js'
 import { createBackgroundFrameLoop } from './backgroundFrame.js'
+import { getExtension, getLanguageIdentifier, isImageAttachment } from './attachments.js'
+
+function getSafeCodeFence(content = '') {
+    let fence = '```'
+    while (content.includes(fence)) {
+        fence += '`'
+    }
+    return fence
+}
 
 /** Text-only content for the gateway (shared lab prompt lives on the server). */
 export function userContentForApi(text, files = []) {
-    const body = text.trim()
-    if (! files.length) return body
+    const body = String(text || '').trim()
+    const safeFiles = Array.isArray(files) ? files.filter(Boolean) : []
+    if (! safeFiles.length) return body
 
-    const labels = files.map((f) => f.label || f.name).filter(Boolean)
-    const note = labels.length
-        ? `\n\n[Attachments: ${labels.join(', ')}]`
-        : `\n\n[${files.length} attachment(s)]`
+    const codeBlocks = []
+    const stubFiles = []
 
-    return `${body}${note}`.trim()
+    for (const file of safeFiles) {
+        const name = file.name || file.label || 'file'
+        const rawContent = typeof file.content === 'string' ? file.content.trim() : ''
+
+        if (rawContent) {
+            const ext = file.ext || getExtension(name)
+            const lang = getLanguageIdentifier(ext)
+            const fence = getSafeCodeFence(rawContent)
+            codeBlocks.push(`[Attached File: ${name}]\n${fence}${lang}\n${rawContent}\n${fence}`)
+        } else if (file.kind === 'image' || isImageAttachment(file)) {
+            stubFiles.push(`[Attached Image: ${name}]`)
+        } else {
+            stubFiles.push(`[Attached File: ${name}]`)
+        }
+    }
+
+    const parts = []
+    if (body) parts.push(body)
+    if (codeBlocks.length) parts.push(codeBlocks.join('\n\n'))
+    if (stubFiles.length) parts.push(stubFiles.join('\n'))
+
+    return parts.join('\n\n').trim()
 }
 
 export function packFiles(items) {
-    return items.map((item) => ({
+    if (! Array.isArray(items)) return []
+    return items.filter(Boolean).map((item) => ({
         id: item.id,
         url: item.url,
         name: item.name,
@@ -29,7 +59,23 @@ export function packFiles(items) {
         label: item.label,
         toneClass: item.toneClass,
         ext: item.ext,
+        content: typeof item.content === 'string' ? item.content : null,
     }))
+}
+
+export function stripAttachedFilesFromContent(content = '') {
+    const raw = String(content || '').trim()
+    if (! raw.includes('[Attached File:') && ! raw.includes('[Attached Image:') && ! raw.includes('[Attachments:')) {
+        return raw
+    }
+    if (/^\[(?:Attached File|Attached Image|Attachments):/i.test(raw)) {
+        return ''
+    }
+    const splitIdx = raw.search(/\n\s*\[(?:Attached File|Attached Image|Attachments):/i)
+    if (splitIdx >= 0) {
+        return raw.slice(0, splitIdx).trim()
+    }
+    return raw
 }
 
 /** Explicit user phrases that re-arm the BuildGate / start build after Skip. */

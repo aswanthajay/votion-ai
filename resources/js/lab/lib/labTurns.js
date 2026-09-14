@@ -1,5 +1,6 @@
 import { parseAutoRepairFromPrompt } from './labErrors.js'
 import { stripPreviewEditPrompt } from './previewEditTargets.js'
+import { stripAttachedFilesFromContent } from './labChatText.js'
 
 export function uid() {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -790,7 +791,15 @@ export function turnsFromMessages(messages = []) {
             const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : null
             const autoRepair = meta?.autoRepair || parseAutoRepairFromPrompt(row.content || '')
             const editTargets = Array.isArray(meta?.previewEdits) ? meta.previewEdits : null
-            pending = emptyTurn(autoRepair ? '' : (row.content || ''), autoRepair, editTargets)
+            const rawText = meta?.rawText != null
+                ? meta.rawText
+                : stripAttachedFilesFromContent(row.content || '')
+            const files = Array.isArray(meta?.attachments) ? meta.attachments : []
+
+            pending = emptyTurn(autoRepair ? '' : rawText, autoRepair, editTargets)
+            if (files.length > 0) {
+                pending.user.files = files
+            }
             const created = parseStamp(row.created_at)
             if (created != null) pending.userCreatedAt = created
             continue

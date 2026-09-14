@@ -496,7 +496,12 @@ class LabChatController extends Controller
             persistUser: $request->boolean('persist_user', true),
             persistAssistant: $request->boolean('persist_assistant', true),
             thought: is_string($thought) ? $thought : null,
-            userMetadata: self::userMetadata($autoRepair, $previewEdits),
+            userMetadata: self::userMetadata(
+                $autoRepair,
+                $previewEdits,
+                $request->input('attachments'),
+                $request->input('raw_text'),
+            ),
             usage: [
                 'model' => $response->modelId,
                 'credits' => $charged,
@@ -545,9 +550,11 @@ class LabChatController extends Controller
     /**
      * @param  array<string, mixed>|null  $autoRepair
      * @param  list<array<string, mixed>>  $previewEdits
+     * @param  list<array<string, mixed>>|null  $attachments
+     * @param  string|null  $rawText
      * @return array<string, mixed>|null
      */
-    private static function userMetadata(?array $autoRepair, array $previewEdits): ?array
+    private static function userMetadata(?array $autoRepair, array $previewEdits, ?array $attachments = null, ?string $rawText = null): ?array
     {
         $meta = [];
         if ($autoRepair !== null) {
@@ -555,6 +562,12 @@ class LabChatController extends Controller
         }
         if ($previewEdits !== []) {
             $meta['previewEdits'] = $previewEdits;
+        }
+        if (is_array($attachments) && $attachments !== []) {
+            $meta['attachments'] = $attachments;
+        }
+        if (is_string($rawText) && trim($rawText) !== '') {
+            $meta['rawText'] = trim($rawText);
         }
 
         return $meta === [] ? null : $meta;

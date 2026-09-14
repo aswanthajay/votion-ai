@@ -59,6 +59,7 @@ import {
     waitUntil,
 } from '../lib/labChatText'
 import { isBuildDisabledForModel, isWebLlmCoder } from '../lib/webllmEngine'
+import { loadAttachmentContent } from '../lib/attachments'
 import { adoptLabUrl, readLabHandoffBrief, readLabHandoffModel, setDocumentTitle } from '../lib/labUrl'
 import {
     hasPaintedToolChrome,
@@ -409,6 +410,9 @@ export function useLabChat({
         const initialTurnStatus = autoRepair
             ? 'Repairing…'
             : 'Waiting for model…'
+        if (attached.length > 0) {
+            await Promise.all(attached.map(loadAttachmentContent))
+        }
         const packed = packFiles(attached)
         beginShelf(id)
 
@@ -632,6 +636,16 @@ export function useLabChat({
             // Server expands auto_repair into the hidden SYSTEM prompt for the LLM.
             auto_repair: autoRepair || undefined,
             preview_edits: (! autoRepair && targets.length) ? slimPreviewEditsForWire(targets) : undefined,
+            attachments: packed.length ? packed.map((f) => ({
+                name: f.name,
+                size: f.size,
+                type: f.type,
+                kind: f.kind,
+                label: f.label,
+                toneClass: f.toneClass,
+                ext: f.ext,
+            })) : undefined,
+            raw_text: (! autoRepair && ! silentTrigger) ? visibleUserText : undefined,
             // Never persist fabricated transition prompts as user chat history.
             persist_user: ! silentTrigger,
         }, { signal: abortController.signal, onEvent: onChatStreamEvent })
