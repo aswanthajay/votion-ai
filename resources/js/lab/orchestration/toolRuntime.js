@@ -606,6 +606,7 @@ export async function applyToolCalls(args = {}) {
                             writeFile: {
                                 path,
                                 status: 'error',
+                                detail: compositionIssue.detail,
                                 before,
                                 after: before,
                                 content: body,
@@ -682,6 +683,7 @@ export async function applyToolCalls(args = {}) {
                         writeFile: {
                             path,
                             status: 'error',
+                            detail: observation?.summary || '',
                             before,
                             after: before,
                             // Attempted body for laravel.log diagnostics (never painted).

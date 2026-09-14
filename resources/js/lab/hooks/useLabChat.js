@@ -1739,7 +1739,7 @@ export function useLabChat({
                                 path: evt.writeFile.path,
                                 status: 'error',
                                 rows: [],
-                                detail: writeFailureHint(evt.writeFile.observation),
+                                detail: evt.writeFile.detail || writeFailureHint(evt.writeFile.observation),
                                 postHeal: healActive,
                             }
                             const writes = upsertChromeCard(liveChrome.writes, card, { key: 'path' })

@@ -865,9 +865,12 @@ export async function runOrchestratedTurn(options = {}) {
             if (Object.keys(workingVfs.pendingWrites()).length === 0) {
                 machine.transition(TURN_STATES.ROLLING_BACK)
                 commitResult = rollbackWorking(workingVfs)
+                const hasRejectedWrites = Array.isArray(rejectedWritePaths) && rejectedWritePaths.length > 0
                 callouts.push({
                     tone: 'danger',
-                    text: 'Build stopped after explore-only tools — no workspace files were written. Canonical unchanged.',
+                    text: hasRejectedWrites
+                        ? `Build stopped — file write could not be applied (${rejectedWritePaths.join(', ')}). Canonical unchanged.`
+                        : 'Build stopped after explore-only tools — no workspace files were written. Canonical unchanged.',
                 })
                 machine.transition(TURN_STATES.PRESENTING, { rolledBack: true, reason: 'no_writes' })
                 machine.transition(TURN_STATES.IDLE)
@@ -1374,9 +1377,12 @@ export async function runOrchestratedTurn(options = {}) {
         if (intent.mutation && pendingPaths.length === 0) {
             machine.transition(TURN_STATES.ROLLING_BACK)
             commitResult = rollbackWorking(workingVfs)
+            const hasRejectedWrites = Array.isArray(rejectedWritePaths) && rejectedWritePaths.length > 0
             callouts.push({
                 tone: 'danger',
-                text: 'Build produced no VFS writes. Canonical unchanged.',
+                text: hasRejectedWrites
+                    ? `Build stopped — file write could not be applied (${rejectedWritePaths.join(', ')}). Canonical unchanged.`
+                    : 'Build produced no VFS writes. Canonical unchanged.',
             })
             machine.transition(TURN_STATES.PRESENTING, { rolledBack: true, reason: 'no_writes' })
             machine.transition(TURN_STATES.IDLE)

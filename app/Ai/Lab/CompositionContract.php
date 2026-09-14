@@ -219,7 +219,7 @@ final class CompositionContract
             return false;
         }
 
-        if (! preg_match('/\b(?:export\s+default\s+function|export\s+function|function\s+(?:[A-Z]\w*|use[A-Za-z0-9_]*)\s*\(|(?:const|let|var)\s+use[A-Za-z0-9_]*\s*=\s*(?:\([^)]*\)|[a-zA-Z0-9_]+)\s*=>)/i', $stripped, $componentMatch, PREG_OFFSET_CAPTURE)) {
+        if (! preg_match('/\b(?:export\s+default\s+(?:function|\([^)]*\)\s*=>|[a-zA-Z0-9_]+\s*=>)|export\s+function|function\s+(?:[A-Z]\w*|use[A-Za-z0-9_]*)\s*\(|(?:export\s+)?(?:const|let|var)\s+(?:[A-Z]\w*|use[A-Za-z0-9_]*)\s*=\s*(?:\([^)]*\)|[a-zA-Z0-9_]+)?\s*=>|(?:export\s+)?(?:const|let|var)\s+(?:[A-Z]\w*|use[A-Za-z0-9_]*)\s*=\s*(?:function\b|React\.memo|React\.forwardRef))/i', $stripped, $componentMatch, PREG_OFFSET_CAPTURE)) {
             return true;
         }
 

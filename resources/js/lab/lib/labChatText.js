@@ -136,6 +136,11 @@ const FAKE_BUILD_DONE = new RegExp([
     '\\byou can (?:now )?(?:step through|try it)\\b',
     '\\bworking dashboard\\b',
     '\\bthe (?:flow|site|app|page) is (?:ready|live|done)\\b',
+    '\\bimplemented (?:the |these )?changes?\\b',
+    '\\bapplied (?:the |these )?changes?\\b',
+    '\\bupdated (?:the )?[a-zA-Z0-9_./-]+\\b',
+    '\\bcreated (?:the )?[a-zA-Z0-9_./-]+\\b',
+    '\\bwrote (?:to )?(?:the )?[a-zA-Z0-9_./-]+\\b',
     '\\b(?:oluşturdum|inşa ettim|tamamladım)\\b',
     'preview[\'’]?da (?:dene|aç)',
 ].join('|'), 'i')
@@ -203,8 +208,8 @@ export function sanitizeBuildReply(text = '', { failedWrites = [] } = {}) {
     if (FAKE_BUILD_DONE.test(out)) {
         const names = failures.map((row) => baseFileName(row.path)).filter(Boolean).join(', ')
         return names
-            ? `Most of the page landed, but ${names} still needs a fix — check the write card above and ask me to retry that file.`
-            : 'Most of the page landed, but one file still needs a fix — check the write card above.'
+            ? `The changes to ${names} could not be applied — check the write card above and ask me to retry.`
+            : 'The changes could not be applied — check the write card above and ask me to retry.'
     }
 
     return out

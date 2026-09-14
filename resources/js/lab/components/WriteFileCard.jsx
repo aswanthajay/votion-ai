@@ -61,14 +61,22 @@ export function WriteFileCard({
                 aria-expanded={isOpen}
                 aria-controls={hasBody && isOpen ? panelId : undefined}
                 onClick={toggle}
-                className="inline-flex w-full max-w-full min-h-5 min-w-0 appearance-none items-center justify-start gap-1.5 border-0 bg-transparent p-0 m-0 text-left text-[13px] font-normal leading-5 text-inherit group text-krikkit-muted transition-colors hover:text-krikkit-fg-soft"
+                className={[
+                    'inline-flex w-full max-w-full min-h-5 min-w-0 appearance-none items-center justify-start gap-1.5 border-0 bg-transparent p-0 m-0 text-left text-[13px] font-normal leading-5 text-inherit group transition-colors',
+                    status === 'error'
+                        ? 'text-red-500/90 dark:text-red-400/90 hover:text-red-600 dark:hover:text-red-300'
+                        : 'text-krikkit-muted hover:text-krikkit-fg-soft',
+                ].join(' ')}
             >
-                <IconPen />
+                <IconPen className={['h-3.5 w-3.5 shrink-0', status === 'error' ? 'text-red-500 dark:text-red-400' : ''].filter(Boolean).join(' ')} />
                 <span className="inline-flex min-h-3.5 min-w-0 flex-1 items-center overflow-hidden text-ellipsis whitespace-nowrap leading-tight" title={path || name}>
                     <ToolStatusText text={`${verb} ${name}`} pending={status === 'writing'} />
                 </span>
                 {status === 'error' && detail ? (
-                    <span className="max-w-[12rem] shrink-0 truncate text-[12px] text-krikkit-subtle" title={detail}>
+                    <span
+                        className="max-w-[14rem] shrink-0 truncate rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:border-red-400/30 dark:bg-red-950/40 dark:text-red-300"
+                        title={detail}
+                    >
                         {detail}
                     </span>
                 ) : null}

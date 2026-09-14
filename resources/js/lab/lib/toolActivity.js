@@ -92,11 +92,15 @@ export function writeFailureHint(observation = {}) {
     if (hint === 'not_writable') return 'Path isn’t writable'
     if (hint === 'diff_loop_breaker') return 'Too many similar rewrites'
     if (hint === 'noop_write') return 'No content change'
+    if (hint === 'composition_hooks_outside') return 'Hooks outside component'
+    if (hint === 'composition_custom_router') return 'Custom router wrapper'
+    if (hint === 'composition_dead_span') return 'Broken layout grid'
     if (hint === 'composition_empty_tile') return 'Empty tiles — use a photograph'
     if (hint === 'composition_poster_hero') return 'Poster hero — product must be on the page'
     if (hint === 'composition_twin_buttons') return 'One primary hero action only'
     if (hint === 'composition_section_stack') return 'Too many stacked landing sections'
     if (hint === 'composition_name_stub') return 'Placeholder section — ship real content'
+    if (hint === 'composition_reject' || hint.startsWith('composition_')) return 'Composition policy rejected'
     if (type === 'EmptySource' || /source file is empty/i.test(String(observation?.summary || ''))) {
         return 'File was empty'
     }
@@ -115,6 +119,11 @@ export function writeFailureHint(observation = {}) {
         return 'Broken import'
     }
     if (type === 'JsonParseError') return 'Invalid JSON'
+    const summary = String(observation?.summary || '').trim()
+    if (summary) {
+        const cleaned = summary.replace(/^Rejected\s+[^:]+:\s*/i, '')
+        return cleaned.length > 50 ? `${cleaned.slice(0, 47)}…` : cleaned
+    }
     return ''
 }
 

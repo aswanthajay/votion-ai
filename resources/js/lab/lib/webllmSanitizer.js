@@ -37,22 +37,27 @@ export function sanitizeWebLlmGeneratedCode(code = '', path = '') {
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]react-use['"];?/g, '')
     out = out.replace(/import\s+(?:{[^}]*}|\w+)\s+from\s+['"]@mui\/[a-zA-Z0-9_-]+['"];?/g, '')
     out = out.replace(/import\s+(?:\*\s+as\s+\w+|{[^}]*}|\w+)\s+from\s+['"](?:yup|zod|react-hook-form|@hookform\/[a-zA-Z0-9_/-]+|react-hot-toast|react-toastify|sonner|axios|framer-motion)['"];?/g, '')
+    out = out.replace(/import\s+(?:(?:\*\s+as\s+\w+)|(?:{[^}]*})|(?:\w+))\s+from\s+['"](?:@headlessui\/react|@radix-ui\/[a-zA-Z0-9_-]+)['"];?/g, '')
     out = out.replace(/import\s+(?:\*\s+as\s+\w+|{[^}]*}|\w+)\s+from\s+['"](?:leaflet|react-leaflet|mapbox-gl|pigeon-maps)['"];?/g, '')
     out = out.replace(/import\s+['"][^'"]*(?:leaflet|mapbox)[^'"]*['"];?/g, '')
 
-    // Strip hallucinated relative local imports (e.g. import { mapChrome } from './mapChrome')
-    out = out.replace(/^import\s+(?:(\*\s+as\s+\w+)|({[^}]*})|(\w+))\s+from\s+['"]\.\/(?:mapChrome|data|mockData|mock|places|constants|types|utils|api|helpers)['"].*$/gm, (match, star, named, def) => {
+    // Strip hallucinated relative local imports (e.g. import { ContactForm } from './components/ContactForm')
+    out = out.replace(/^import\s+(?:(\*\s+as\s+\w+)|({[^}]*})|(\w+))\s+from\s+['"]\.\/(?:(?:components|lib|utils|data|api|constants|types)\/)?[a-zA-Z0-9_/-]+['"].*$/gm, (match, star, named, def) => {
         const decls = []
         if (star) {
             const name = star.replace(/\*\s+as\s+/, '').trim()
             decls.push(`const ${name} = {};`)
         }
         if (def) {
-            decls.push(`const ${def} = {};`)
+            const isComp = /^[A-Z]/.test(def)
+            decls.push(isComp ? `const ${def} = (props) => null;` : `const ${def} = {};`)
         }
         if (named) {
             const idents = named.replace(/[{}]/g, '').split(',').map((s) => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)
-            idents.forEach((id) => decls.push(`const ${id} = {};`))
+            idents.forEach((id) => {
+                const isComp = /^[A-Z]/.test(id)
+                decls.push(isComp ? `const ${id} = (props) => null;` : `const ${id} = {};`)
+            })
         }
         return decls.join('\n')
     })
@@ -232,6 +237,14 @@ function useQuery({ queryFn }) {
   if (mb) cls += \` mb-\${mb}\`;
   return <div className={cls.trim()} {...props}>{children}</div>;
 };`)
+    }
+
+    if (/<Grid\b/.test(out) && ! /const\s+Grid\s*=/.test(out)) {
+        stubs.push(`const Grid = ({ children, className = '', ...props }) => <div className={className} {...props}>{children}</div>;`)
+    }
+
+    if (/<Container\b/.test(out) && ! /const\s+Container\s*=/.test(out)) {
+        stubs.push(`const Container = ({ children, className = '', ...props }) => <div className={\`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 \${className}\`.trim()} {...props}>{children}</div>;`)
     }
 
     if (/<Heading\b/.test(out) && ! /const\s+Heading\s*=/.test(out)) {
